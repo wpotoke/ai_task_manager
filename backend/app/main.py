@@ -5,6 +5,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from app.core.config import settings
+from app.core.background_queue import bg_queue
 from app.db.database import init_db
 from app.api.v1.router import api_router
 
@@ -12,7 +13,9 @@ from app.api.v1.router import api_router
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     await init_db()
+    bg_queue.start()
     yield
+    await bg_queue.stop()
 
 
 app = FastAPI(

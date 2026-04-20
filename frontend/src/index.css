@@ -351,6 +351,18 @@ body {
   white-space: pre-wrap; word-break: break-word;
 }
 
+/* ── Streaming cursor ───────────────────────── */
+.ai-cursor {
+  display: inline-block;
+  animation: cursorBlink .7s step-end infinite;
+  color: #6554C0;
+  font-weight: 400;
+}
+@keyframes cursorBlink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
 /* ── Kanban drag ─────────────────────────────── */
 .kanban-body.over { background: #E3FCEF; outline: 2px dashed #57D9A3; outline-offset: -2px; }
 .kanban-card.dragging { opacity: .35; cursor: grabbing; }
