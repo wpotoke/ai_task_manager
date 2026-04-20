@@ -1,9 +1,9 @@
 import json
-import os
 from datetime import date
 from typing import Optional
-import anthropic
+from openai import OpenAI
 
+from app.core.config import settings
 from app.models.task import Task, Priority
 from app.schemas.llm import (
     CategorySuggestion,
@@ -13,24 +13,33 @@ from app.schemas.llm import (
     WorkloadSummary,
 )
 
-CLAUDE_MODEL = "claude-haiku-4-5-20251001"
-
-
-def _get_client() -> anthropic.Anthropic:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY is not set")
-    return anthropic.Anthropic(api_key=api_key)
-
-
 SYSTEM_PROMPT = """You are an intelligent task management assistant.
 Your role is to help users organize and prioritize their tasks efficiently.
 Always respond with valid JSON matching the requested schema exactly.
 Be concise and practical in your reasoning."""
 
 
-async def suggest_category(title: str, description: Optional[str]) -> CategorySuggestion:
+def _get_client() -> OpenAI:
+    if not settings.openai_api_key:
+        raise RuntimeError("OPENAI_API_KEY is not set")
+    return OpenAI(api_key=settings.openai_api_key)
+
+
+def _chat(user: str, max_tokens: int = 512) -> str:
     client = _get_client()
+    response = client.chat.completions.create(
+        model=settings.openai_model,
+        max_tokens=max_tokens,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user},
+        ],
+        response_format={"type": "json_object"},
+    )
+    return response.choices[0].message.content or ""
+
+
+async def suggest_category(title: str, description: Optional[str]) -> CategorySuggestion:
     desc_part = f"\nDescription: {description}" if description else ""
     prompt = f"""Analyze this task and suggest the most appropriate category/tag.
 
@@ -41,19 +50,11 @@ Respond with JSON:
 
 Examples of good categories: "Development", "Research", "Meeting", "Review", "Documentation", "Bug Fix", "Design", "DevOps", "Personal", "Finance"
 """
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=256,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = message.content[0].text.strip()
-    data = _parse_json(raw)
+    data = _parse_json(_chat(prompt, max_tokens=256))
     return CategorySuggestion(**data)
 
 
 async def decompose_task(title: str, description: Optional[str]) -> DecompositionResult:
-    client = _get_client()
     desc_part = f"\nDescription: {description}" if description else ""
     prompt = f"""Break down this complex task into smaller, actionable subtasks.
 
@@ -69,27 +70,16 @@ Respond with JSON:
 }}
 
 Create 3-7 concrete, actionable subtasks. Each subtask should be independently completable."""
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = message.content[0].text.strip()
-    data = _parse_json(raw)
-    subtasks = [SubTask(**s) for s in data["subtasks"]]
-    return DecompositionResult(subtasks=subtasks, reasoning=data["reasoning"])
+    data = _parse_json(_chat(prompt, max_tokens=1024))
+    return DecompositionResult(subtasks=[SubTask(**s) for s in data["subtasks"]], reasoning=data["reasoning"])
 
 
 async def suggest_priority(title: str, description: Optional[str], deadline: Optional[date]) -> PrioritySuggestion:
-    client = _get_client()
     desc_part = f"\nDescription: {description}" if description else ""
     deadline_part = f"\nDeadline: {deadline.isoformat()}" if deadline else "\nDeadline: not set"
-    today = date.today().isoformat()
-
     prompt = f"""Suggest an appropriate priority level for this task.
 
-Today's date: {today}
+Today's date: {date.today().isoformat()}
 Task title: {title}{desc_part}{deadline_part}
 
 Priority levels:
@@ -100,27 +90,17 @@ Priority levels:
 Respond with JSON:
 {{"priority": "<low|medium|high>", "reasoning": "<brief explanation>"}}"""
 
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=256,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = message.content[0].text.strip()
-    data = _parse_json(raw)
+    data = _parse_json(_chat(prompt, max_tokens=256))
     return PrioritySuggestion(priority=Priority(data["priority"]), reasoning=data["reasoning"])
 
 
 async def summarize_workload(tasks: list[Task]) -> WorkloadSummary:
-    client = _get_client()
     today = date.today()
-
     overdue = [t for t in tasks if t.deadline and t.deadline < today and t.status != "done"]
     upcoming_7d = [
         t for t in tasks
         if t.deadline and today <= t.deadline <= date.fromordinal(today.toordinal() + 7)
     ]
-
     distribution = {"low": 0, "medium": 0, "high": 0}
     for t in tasks:
         distribution[t.priority.value] += 1
@@ -130,12 +110,11 @@ async def summarize_workload(tasks: list[Task]) -> WorkloadSummary:
         + (f" | deadline: {t.deadline}" if t.deadline else "")
         for t in tasks[:30]
     )
-
     prompt = f"""Analyze the user's current workload and provide a concise natural language summary.
 
 Today: {today.isoformat()}
 Active tasks ({len(tasks)} total):
-{tasks_text if tasks_text else "No active tasks"}
+{tasks_text or "No active tasks"}
 
 Overdue: {len(overdue)} tasks
 Due in next 7 days: {len(upcoming_7d)} tasks
@@ -152,14 +131,7 @@ Respond with JSON:
   "distribution": {json.dumps(distribution)}
 }}"""
 
-    message = client.messages.create(
-        model=CLAUDE_MODEL,
-        max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    raw = message.content[0].text.strip()
-    data = _parse_json(raw)
+    data = _parse_json(_chat(prompt, max_tokens=512))
     return WorkloadSummary(**data)
 
 

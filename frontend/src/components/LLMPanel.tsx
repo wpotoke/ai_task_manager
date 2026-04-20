@@ -2,8 +2,7 @@ import { useState } from 'react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { Wand2, X, CheckCircle, ChevronRight } from 'lucide-react'
 import { llmApi, tasksApi } from '../api/tasks'
-import type { Task, SubTask } from '../types/task'
-import type { CategorySuggestion, DecompositionResult, PrioritySuggestion } from '../types/task'
+import type { Task, SubTask, CategorySuggestion, DecompositionResult, PrioritySuggestion } from '../types/task'
 import { Spinner } from './Spinner'
 import { PriorityBadge } from './Badge'
 
@@ -14,31 +13,22 @@ interface Props {
 
 type LLMMode = 'categorize' | 'decompose' | 'priority'
 
+const MODES: { key: LLMMode; label: string }[] = [
+  { key: 'categorize', label: 'Категория' },
+  { key: 'priority',   label: 'Приоритет' },
+  { key: 'decompose',  label: 'Подзадачи' },
+]
+
 export function LLMPanel({ task, onClose }: Props) {
   const qc = useQueryClient()
   const [mode, setMode] = useState<LLMMode | null>(null)
   const [result, setResult] = useState<CategorySuggestion | DecompositionResult | PrioritySuggestion | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const categorizeMut = useMutation({
-    mutationFn: () => llmApi.categorize(task.id),
-    onSuccess: (data) => { setResult(data); setError(null) },
-    onError: (e: Error) => setError(e.message),
-  })
-
-  const decomposeMut = useMutation({
-    mutationFn: () => llmApi.decompose(task.id),
-    onSuccess: (data) => { setResult(data); setError(null) },
-    onError: (e: Error) => setError(e.message),
-  })
-
-  const priorityMut = useMutation({
-    mutationFn: () => llmApi.suggestPriority(task.id),
-    onSuccess: (data) => { setResult(data); setError(null) },
-    onError: (e: Error) => setError(e.message),
-  })
-
-  const applyMut = useMutation({
+  const categorizeMut = useMutation({ mutationFn: () => llmApi.categorize(task.id),      onSuccess: d => { setResult(d); setError(null) }, onError: (e: Error) => setError(e.message) })
+  const decomposeMut  = useMutation({ mutationFn: () => llmApi.decompose(task.id),       onSuccess: d => { setResult(d); setError(null) }, onError: (e: Error) => setError(e.message) })
+  const priorityMut   = useMutation({ mutationFn: () => llmApi.suggestPriority(task.id), onSuccess: d => { setResult(d); setError(null) }, onError: (e: Error) => setError(e.message) })
+  const applyMut      = useMutation({
     mutationFn: (data: Parameters<typeof tasksApi.update>[1]) => tasksApi.update(task.id, data),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['tasks'] }); onClose() },
     onError: (e: Error) => setError(e.message),
@@ -47,196 +37,135 @@ export function LLMPanel({ task, onClose }: Props) {
   const isLoading = categorizeMut.isPending || decomposeMut.isPending || priorityMut.isPending
 
   const runMode = (m: LLMMode) => {
-    setMode(m)
-    setResult(null)
-    setError(null)
+    setMode(m); setResult(null); setError(null)
     if (m === 'categorize') categorizeMut.mutate()
-    if (m === 'decompose') decomposeMut.mutate()
-    if (m === 'priority') priorityMut.mutate()
-  }
-
-  const applyCategory = () => {
-    const r = result as CategorySuggestion
-    applyMut.mutate({ category: r.category })
-  }
-
-  const applyPriority = () => {
-    const r = result as PrioritySuggestion
-    applyMut.mutate({ priority: r.priority })
+    if (m === 'decompose')  decomposeMut.mutate()
+    if (m === 'priority')   priorityMut.mutate()
   }
 
   const createSubtasks = async () => {
     const r = result as DecompositionResult
     for (const st of r.subtasks) {
-      await tasksApi.create({
-        title: st.title,
-        description: st.description ?? null,
-        priority: task.priority,
-        status: 'waiting',
-        deadline: task.deadline,
-        category: task.category ?? null,
-      })
+      await tasksApi.create({ title: st.title, description: st.description ?? null, priority: task.priority, status: 'waiting', deadline: task.deadline, category: task.category ?? null })
     }
     qc.invalidateQueries({ queryKey: ['tasks'] })
     onClose()
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <Wand2 size={18} className="text-violet-600" />
-            <h2 className="text-base font-semibold text-slate-800">ИИ-ассистент</h2>
+    <div className="dialog-overlay" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="dialog-box">
+        {/* Header */}
+        <div className="dialog-header">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Wand2 size={16} style={{ color: '#6554C0' }} />
+            <h2 className="dialog-title">ИИ-ассистент</h2>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
-            <X size={20} />
-          </button>
+          <button className="btn-ghost" onClick={onClose}><X size={18} /></button>
         </div>
 
-        <div className="px-6 py-3 bg-slate-50 border-b border-slate-100">
-          <p className="text-sm text-slate-600 font-medium truncate">{task.title}</p>
+        {/* Task name */}
+        <div style={{ padding: '8px 20px', background: '#F4F5F7', borderBottom: '1px solid #DFE1E6', fontSize: 13, color: '#42526E', fontWeight: 500, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {task.title}
         </div>
 
-        <div className="flex gap-2 px-6 py-3 border-b border-slate-100">
-          {(
-            [
-              { key: 'categorize', label: 'Категория' },
-              { key: 'priority', label: 'Приоритет' },
-              { key: 'decompose', label: 'Подзадачи' },
-            ] as const
-          ).map((btn) => (
+        {/* Tabs */}
+        <div className="llm-tabs">
+          {MODES.map(btn => (
             <button
               key={btn.key}
+              className={`llm-tab${mode === btn.key ? ' active' : ''}`}
               onClick={() => runMode(btn.key)}
               disabled={isLoading}
-              className={`flex-1 py-1.5 text-xs font-medium rounded-lg transition-colors border
-                ${mode === btn.key
-                  ? 'bg-violet-600 text-white border-violet-600'
-                  : 'border-slate-200 text-slate-600 hover:bg-slate-100'}`}
             >
               {btn.label}
             </button>
           ))}
         </div>
 
-        <div className="flex-1 overflow-y-auto px-6 py-4 min-h-[160px]">
-          {!mode && (
-            <p className="text-sm text-slate-400 text-center mt-8">
-              Выберите действие выше, чтобы получить предложение от ИИ
-            </p>
-          )}
+        {/* Body */}
+        <div className="llm-body">
+          {!mode && <p className="llm-empty">Выберите действие выше</p>}
 
           {isLoading && (
-            <div className="flex flex-col items-center justify-center gap-3 mt-8">
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, paddingTop: 32 }}>
               <Spinner size="md" />
-              <p className="text-sm text-slate-400">Анализирую задачу...</p>
+              <span style={{ fontSize: 13, color: '#97A0AF' }}>Анализирую задачу...</span>
             </div>
           )}
 
           {error && (
-            <div className="bg-red-50 text-red-700 text-sm px-3 py-2 rounded-lg">{error}</div>
+            <div className="lozenge lozenge-error" style={{ display: 'block', padding: '8px 12px', borderRadius: 3, fontSize: 13 }}>
+              {error}
+            </div>
           )}
 
           {!isLoading && result && mode === 'categorize' && (
-            <CategoryResult
-              data={result as CategorySuggestion}
-              onApply={applyCategory}
-              applying={applyMut.isPending}
-            />
+            <CategoryResult data={result as CategorySuggestion} onApply={() => applyMut.mutate({ category: (result as CategorySuggestion).category })} applying={applyMut.isPending} />
           )}
-
           {!isLoading && result && mode === 'priority' && (
-            <PriorityResult
-              data={result as PrioritySuggestion}
-              onApply={applyPriority}
-              applying={applyMut.isPending}
-            />
+            <PriorityResult data={result as PrioritySuggestion} onApply={() => applyMut.mutate({ priority: (result as PrioritySuggestion).priority })} applying={applyMut.isPending} />
           )}
-
           {!isLoading && result && mode === 'decompose' && (
-            <DecomposeResult
-              data={result as DecompositionResult}
-              onApply={createSubtasks}
-              applying={applyMut.isPending}
-            />
+            <DecomposeResult data={result as DecompositionResult} onApply={createSubtasks} applying={applyMut.isPending} />
           )}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '8px 20px 16px', display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="btn-secondary" onClick={onClose}>Закрыть</button>
         </div>
       </div>
     </div>
   )
 }
 
-function CategoryResult({ data, onApply, applying }: {
-  data: CategorySuggestion; onApply: () => void; applying: boolean
-}) {
+function CategoryResult({ data, onApply, applying }: { data: CategorySuggestion; onApply: () => void; applying: boolean }) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="bg-violet-100 text-violet-700 px-3 py-1 rounded-full text-sm font-medium">
-          {data.category}
-        </span>
-      </div>
-      <p className="text-sm text-slate-600">{data.reasoning}</p>
-      <button
-        onClick={onApply}
-        disabled={applying}
-        className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
-      >
-        <CheckCircle size={14} />
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <span className="jira-tag" style={{ fontSize: 13, padding: '4px 10px' }}>{data.category}</span>
+      <p style={{ fontSize: 13, color: '#42526E', lineHeight: 1.5 }}>{data.reasoning}</p>
+      <button className="btn-primary" onClick={onApply} disabled={applying} style={{ alignSelf: 'flex-start', gap: 6 }}>
+        <CheckCircle size={13} />
         {applying ? 'Применяю...' : 'Применить категорию'}
       </button>
     </div>
   )
 }
 
-function PriorityResult({ data, onApply, applying }: {
-  data: PrioritySuggestion; onApply: () => void; applying: boolean
-}) {
+function PriorityResult({ data, onApply, applying }: { data: PrioritySuggestion; onApply: () => void; applying: boolean }) {
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-500">Предложенный приоритет:</span>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <span style={{ fontSize: 13, color: '#6B778C' }}>Рекомендуемый приоритет:</span>
         <PriorityBadge priority={data.priority} />
       </div>
-      <p className="text-sm text-slate-600">{data.reasoning}</p>
-      <button
-        onClick={onApply}
-        disabled={applying}
-        className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
-      >
-        <CheckCircle size={14} />
+      <p style={{ fontSize: 13, color: '#42526E', lineHeight: 1.5 }}>{data.reasoning}</p>
+      <button className="btn-primary" onClick={onApply} disabled={applying} style={{ alignSelf: 'flex-start', gap: 6 }}>
+        <CheckCircle size={13} />
         {applying ? 'Применяю...' : 'Применить приоритет'}
       </button>
     </div>
   )
 }
 
-function DecomposeResult({ data, onApply, applying }: {
-  data: DecompositionResult; onApply: () => void; applying: boolean
-}) {
+function DecomposeResult({ data, onApply, applying }: { data: DecompositionResult; onApply: () => void; applying: boolean }) {
   return (
-    <div className="space-y-3">
-      <p className="text-sm text-slate-500">{data.reasoning}</p>
-      <ul className="space-y-2">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <p style={{ fontSize: 12, color: '#97A0AF', lineHeight: 1.4 }}>{data.reasoning}</p>
+      <ul style={{ display: 'flex', flexDirection: 'column', gap: 8, listStyle: 'none', padding: 0 }}>
         {data.subtasks.map((st: SubTask, i: number) => (
-          <li key={i} className="flex items-start gap-2 text-sm">
-            <ChevronRight size={14} className="text-violet-500 mt-0.5 flex-shrink-0" />
+          <li key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 13 }}>
+            <ChevronRight size={13} style={{ color: '#6554C0', flexShrink: 0, marginTop: 2 }} />
             <div>
-              <span className="font-medium text-slate-700">{st.title}</span>
-              {st.description && (
-                <p className="text-slate-500 text-xs mt-0.5">{st.description}</p>
-              )}
+              <span style={{ fontWeight: 500, color: '#172B4D' }}>{st.title}</span>
+              {st.description && <p style={{ fontSize: 12, color: '#6B778C', marginTop: 2 }}>{st.description}</p>}
             </div>
           </li>
         ))}
       </ul>
-      <button
-        onClick={onApply}
-        disabled={applying}
-        className="flex items-center gap-1.5 px-4 py-2 bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-60"
-      >
-        <CheckCircle size={14} />
+      <button className="btn-primary" onClick={onApply} disabled={applying} style={{ alignSelf: 'flex-start', gap: 6 }}>
+        <CheckCircle size={13} />
         {applying ? 'Создаю...' : `Создать ${data.subtasks.length} подзадачи`}
       </button>
     </div>

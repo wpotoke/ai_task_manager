@@ -1,5 +1,5 @@
 import { Search, X } from 'lucide-react'
-import type { TaskFilters, Priority, Status } from '../types/task'
+import type { TaskFilters } from '../types/task'
 
 interface Props {
   filters: TaskFilters
@@ -7,41 +7,38 @@ interface Props {
 }
 
 export function FilterBar({ filters, onChange }: Props) {
-  const set = (key: keyof TaskFilters, val: string) => {
+  const set = (key: keyof TaskFilters, val: string) =>
     onChange({ ...filters, [key]: val || undefined })
-  }
 
-  const clear = () => onChange({})
   const hasFilters = Object.values(filters).some(Boolean)
 
   return (
-    <div className="flex flex-wrap gap-2 items-center">
-      <div className="relative flex-1 min-w-48">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+    <div className="filter-bar">
+      <div className="filter-search">
+        <Search size={13} className="filter-search-icon" />
         <input
           type="text"
           value={filters.search ?? ''}
           onChange={e => set('search', e.target.value)}
-          placeholder="Поиск по названию или описанию..."
-          className="w-full pl-8 pr-3 py-2 text-sm border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+          placeholder="Поиск задач..."
         />
       </div>
 
       <select
+        className={`filter-select${filters.status ? ' active' : ''}`}
         value={filters.status ?? ''}
         onChange={e => set('status', e.target.value)}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
       >
         <option value="">Все статусы</option>
-        <option value="waiting">Ожидает</option>
+        <option value="waiting">К выполнению</option>
         <option value="in_progress">В работе</option>
         <option value="done">Готово</option>
       </select>
 
       <select
+        className={`filter-select${filters.priority ? ' active' : ''}`}
         value={filters.priority ?? ''}
         onChange={e => set('priority', e.target.value)}
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400 bg-white"
       >
         <option value="">Все приоритеты</option>
         <option value="high">Высокий</option>
@@ -51,18 +48,15 @@ export function FilterBar({ filters, onChange }: Props) {
 
       <input
         type="date"
+        className="filter-date"
         value={filters.deadline_before ?? ''}
         onChange={e => set('deadline_before', e.target.value)}
         title="Срок до..."
-        className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
       />
 
       {hasFilters && (
-        <button
-          onClick={clear}
-          className="flex items-center gap-1 text-sm text-slate-500 hover:text-red-500 transition-colors"
-        >
-          <X size={14} />
+        <button className="filter-clear" onClick={() => onChange({})}>
+          <X size={12} />
           Сбросить
         </button>
       )}

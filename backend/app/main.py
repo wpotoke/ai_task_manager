@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
+from app.core.config import settings
 from app.db.database import init_db
 from app.api.v1.router import api_router
 
@@ -15,15 +16,15 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Task Manager",
+    title=settings.app_title,
     description="Intelligent task manager with LLM-powered features",
-    version="1.0.0",
+    version=settings.app_version,
     lifespan=lifespan,
 )
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:5174"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -42,4 +43,4 @@ async def validation_exception_handler(request: Request, exc: ValidationError):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": settings.app_version}
