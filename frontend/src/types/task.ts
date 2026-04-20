@@ -68,4 +68,5 @@ export interface WorkloadSummary {
   overdue_count: number
   upcoming_count: number
   distribution: Record<string, number>
+  from_cache?: boolean
 }

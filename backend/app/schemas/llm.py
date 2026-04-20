@@ -28,3 +28,4 @@ class WorkloadSummary(BaseModel):
     overdue_count: int
     upcoming_count: int
     distribution: dict[str, int]
+    from_cache: bool = False
